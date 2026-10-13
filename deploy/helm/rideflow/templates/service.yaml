@@ -1,0 +1,22 @@
+{{- $global := .Values.global -}}
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ $name }}
+  namespace: {{ $global.namespace }}
+  labels:
+    {{- include "rideflow.labels" $root | nindent 4 }}
+    {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 4 }}
+spec:
+  type: ClusterIP
+  selector:
+    {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: {{ $svc.port }}
+      protocol: TCP
+{{- end }}

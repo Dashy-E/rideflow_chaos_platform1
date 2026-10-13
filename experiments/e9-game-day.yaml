@@ -1,0 +1,41 @@
+# E9 — 60-minute randomised game day (doc §13.2)
+# Driven via POST /schedule rather than POST /experiments/{id}/run: the
+# injector picks a random candidate experiment from the list below at each
+# tick, subject to the same per-experiment blast_radius and abort_conditions
+# and the global concurrency limit of one active experiment (doc §8.5).
+id: game-day-60min
+description: 60-minute continuous randomised chaos under steady 200 RPS load, drawing from E1-E8
+fault:
+  type: scheduled_random
+  candidate_experiments:
+    - pod-kill-ride-service
+    - pod-kill-ride-service-2of3
+    - cpu-hog-pricing-service
+    - network-latency-driver-service
+    - dependency-failure-pricing-service
+    - packet-loss-user-service
+  params:
+    min_interval_seconds: 120
+    max_interval_seconds: 300
+    respect_business_hours_guard: true
+    max_concurrent_experiments: 1
+steady_state:
+  - metric: rideflow:availability
+    operator: ">"
+    threshold: 0.995
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.01
+blast_radius:
+  max_pods_affected: 2
+  max_percent_of_replicas: 34
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 3600s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: Overall availability > 99.5%
+runs_required: 1

@@ -1,0 +1,8 @@
+id: rate-limit-pressure-gateway
+description: Burst-flood the api-gateway to verify its per-IP token-bucket rate limiter engages under load
+type: rate_limit_pressure
+target_service: api-gateway
+severity_if_vulnerable: medium
+params:
+  concurrency: 60
+  waves: 4

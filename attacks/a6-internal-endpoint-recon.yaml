@@ -1,0 +1,6 @@
+id: internal-endpoint-recon
+description: Enumerate internal/admin endpoints across all services to check whether they're reachable without going through the gateway
+type: internal_endpoint_recon
+target_service: api-gateway
+severity_if_vulnerable: medium
+params: {}

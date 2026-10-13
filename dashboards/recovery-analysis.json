@@ -1,0 +1,127 @@
+{
+  "id": null,
+  "uid": "rideflow-recovery-analysis",
+  "title": "RideFlow / Recovery Analysis",
+  "description": "Pod count over time, HPA desired vs current replicas, node count, restart counts, endpoint churn.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "5s",
+  "tags": ["rideflow", "recovery"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "refresh": 1
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Chaos experiments",
+        "datasource": { "type": "prometheus", "uid": "$datasource" },
+        "enable": true,
+        "iconColor": "red",
+        "tags": ["chaos"],
+        "type": "tags"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Pod Count Over Time",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "rideflow:healthy_replicas",
+          "legendFormat": "{{app}}"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "HPA Desired vs Current Replicas",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "kube_horizontalpodautoscaler_status_desired_replicas{namespace=\"rideflow\"}",
+          "legendFormat": "desired / {{horizontalpodautoscaler}}"
+        },
+        {
+          "refId": "B",
+          "expr": "kube_horizontalpodautoscaler_status_current_replicas{namespace=\"rideflow\"}",
+          "legendFormat": "current / {{horizontalpodautoscaler}}"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "Node Count",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "sum(kube_node_info)", "legendFormat": "nodes" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "Container Restart Counts",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (pod) (rate(kube_pod_container_status_restarts_total{namespace=\"rideflow\"}[5m]))",
+          "legendFormat": "{{pod}}"
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Endpoint Churn (ready endpoints)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (app) (changes(kube_pod_status_ready{namespace=\"rideflow\",condition=\"true\"}[5m]))",
+          "legendFormat": "{{app}} readiness flips"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Time to Recover (last MTTR by experiment)",
+      "type": "bargauge",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "chaos_mttr_seconds", "legendFormat": "{{experiment}}" }
+      ]
+    }
+  ]
+}

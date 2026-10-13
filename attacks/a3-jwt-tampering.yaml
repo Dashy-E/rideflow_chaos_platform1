@@ -1,0 +1,6 @@
+id: jwt-tampering-user-service
+description: Probe JWT verification with alg:none, garbage signatures, tampered payloads, and forgery using the known default dev secret
+type: jwt_tampering
+target_service: user-service
+severity_if_vulnerable: critical
+params: {}

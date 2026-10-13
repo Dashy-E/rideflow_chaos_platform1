@@ -1,0 +1,13 @@
+# Copy to terraform.tfvars and adjust as needed.
+# Doc §14.2: provision the secondary region only for failover experiments
+# (weeks 5-6, 10) to save cost; `terraform destroy` it between sessions.
+
+region             = "ap-southeast-1"
+cluster_name       = "rideflow-secondary"
+vpc_cidr           = "10.1.0.0/16"
+azs                = ["ap-southeast-1a", "ap-southeast-1b", "ap-southeast-1c"]
+
+node_min_size      = 2
+node_desired_size  = 2
+node_max_size      = 6
+node_capacity_type = "ON_DEMAND"

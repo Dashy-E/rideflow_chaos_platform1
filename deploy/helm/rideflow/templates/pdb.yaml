@@ -1,0 +1,20 @@
+{{- $global := .Values.global -}}
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+{{- if and $svc.pdb (gt ($svc.pdb.minAvailable | int) 0) }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ $name }}
+  namespace: {{ $global.namespace }}
+  labels:
+    {{- include "rideflow.labels" $root | nindent 4 }}
+    {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 4 }}
+spec:
+  minAvailable: {{ $svc.pdb.minAvailable }}
+  selector:
+    matchLabels:
+      {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 6 }}
+{{- end }}
+{{- end }}

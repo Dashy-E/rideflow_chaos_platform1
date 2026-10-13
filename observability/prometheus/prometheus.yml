@@ -1,0 +1,72 @@
+# RideFlow Prometheus configuration.
+# Ports/service names are authoritative per docs/api/contracts.md — do not diverge.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/recording_rules.yml
+  - /etc/prometheus/alert_rules.yml
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+scrape_configs:
+  # The `rideflow` job group is scraped at 5s per doc §15 risk #7:
+  # measurement precision is bounded by scrape interval, and a 15s scrape
+  # cannot resolve a sub-10s MTTR accurately during chaos experiments.
+  - job_name: api-gateway
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["api-gateway:8080"]
+        labels: { job: api-gateway, service: api-gateway }
+
+  - job_name: user-service
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["user-service:8081"]
+        labels: { job: user-service, service: user-service }
+
+  - job_name: ride-service
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["ride-service:8082"]
+        labels: { job: ride-service, service: ride-service }
+
+  - job_name: driver-service
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["driver-service:8083"]
+        labels: { job: driver-service, service: driver-service }
+
+  - job_name: pricing-service
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["pricing-service:8084"]
+        labels: { job: pricing-service, service: pricing-service }
+
+  - job_name: chaos-injector
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["chaos-injector:9000"]
+        labels: { job: chaos-injector, service: chaos-injector }
+
+  - job_name: security-injector
+    scrape_interval: 5s
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["security-injector:9001"]
+        labels: { job: security-injector, service: security-injector }
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

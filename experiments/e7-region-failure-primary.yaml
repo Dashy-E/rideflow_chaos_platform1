@@ -1,0 +1,29 @@
+# E7 — Force primary region unhealthy (doc §13.2)
+id: region-failure-primary
+description: Force /healthz/region on the primary api-gateway ALB to return 503, triggering Route 53 failover
+fault:
+  type: region_failure
+  selector:
+    region: ap-south-1
+    endpoint: /healthz/region
+  params:
+    forced_status_code: 503
+steady_state:
+  - metric: probe_success{job="route53-health-check",region="ap-south-1"}
+    operator: "=="
+    threshold: 1
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.05
+blast_radius:
+  max_regions_affected: 1
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 300s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.5
+    sustained_for: 30s
+hypothesis: Traffic shifts to secondary; MTTR < 120s
+runs_required: 3

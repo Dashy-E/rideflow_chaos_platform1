@@ -1,0 +1,24 @@
+# Copy to terraform.tfvars and fill in real values.
+
+region           = "ap-south-1"
+secondary_region = "ap-southeast-1"
+
+domain_name = "rideflow.example"        # PLACEHOLDER — use a domain you control, or a subdomain of one
+record_name = "api.rideflow.example"    # PLACEHOLDER
+
+github_org  = "your-github-org"          # PLACEHOLDER
+github_repo = "RideFlow-Chaos-Platform"
+
+# Leave the four *_alb_* vars unset (default "") on the first apply — only
+# the hosted zone, IAM, and ECR resources will be created. After both
+# infra/envs/primary and infra/envs/secondary are applied and each region's
+# ALB exists, look up the ALB DNS name + hosted zone ID and re-apply this
+# root module to wire up Route 53 failover:
+#
+#   aws elbv2 describe-load-balancers --region ap-south-1 \
+#     --query "LoadBalancers[?contains(LoadBalancerName, 'rideflow')].[DNSName,CanonicalHostedZoneId]"
+#
+# primary_alb_dns_name   = "k8s-rideflow-xxxxx.ap-south-1.elb.amazonaws.com"
+# primary_alb_zone_id    = "ZXXXXXXXXXXXXX"
+# secondary_alb_dns_name = "k8s-rideflow-xxxxx.ap-southeast-1.elb.amazonaws.com"
+# secondary_alb_zone_id  = "ZYYYYYYYYYYYYY"

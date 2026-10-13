@@ -1,0 +1,283 @@
+version: "3.9"
+
+# RideFlow local dev stack — see docs/api/contracts.md for authoritative
+# ports, service names and env vars. Do not diverge from that file.
+
+x-common-env: &common-env
+  LOG_LEVEL: info
+  REGION: local
+  CHAOS_FAULT_HEADER: x-chaos-fault
+
+networks:
+  rideflow:
+    name: rideflow
+    driver: bridge
+
+volumes:
+  prometheus-data:
+  grafana-data:
+  chaos-state:
+  security-state:
+
+services:
+  # ---------------------------------------------------------------------
+  # Application services
+  # ---------------------------------------------------------------------
+  api-gateway:
+    build: ./services/api-gateway
+    image: rideflow/api-gateway:dev
+    container_name: api-gateway
+    ports:
+      - "8080:8080"
+    environment:
+      <<: *common-env
+      PORT: "8080"
+      USER_SERVICE_URL: http://user-service:8081
+      RIDE_SERVICE_URL: http://ride-service:8082
+      DRIVER_SERVICE_URL: http://driver-service:8083
+      PRICING_SERVICE_URL: http://pricing-service:8084
+    depends_on:
+      user-service:
+        condition: service_healthy
+      ride-service:
+        condition: service_healthy
+      driver-service:
+        condition: service_started
+      pricing-service:
+        condition: service_healthy
+    # distroless static base has no shell/wget to run a container-exec
+    # healthcheck with; liveness is verified externally (curl from the host,
+    # or a Kubernetes httpGet probe once deployed — see deploy/helm probes)
+    networks: [rideflow]
+
+  user-service:
+    build: ./services/user-service
+    image: rideflow/user-service:dev
+    container_name: user-service
+    ports:
+      - "8081:8081"
+    environment:
+      <<: *common-env
+      PORT: "8081"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8081/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [rideflow]
+
+  ride-service:
+    build: ./services/ride-service
+    image: rideflow/ride-service:dev
+    container_name: ride-service
+    ports:
+      - "8082:8082"
+    environment:
+      <<: *common-env
+      PORT: "8082"
+      PRICING_SERVICE_URL: http://pricing-service:8084
+      DRIVER_SERVICE_URL: http://driver-service:8083
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8082/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [rideflow]
+
+  driver-service:
+    build: ./services/driver-service
+    image: rideflow/driver-service:dev
+    container_name: driver-service
+    ports:
+      - "8083:8083"
+    environment:
+      <<: *common-env
+      PORT: "8083"
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+    # distroless static base has no shell/wget for a container-exec healthcheck
+    networks: [rideflow]
+
+  pricing-service:
+    build: ./services/pricing-service
+    image: rideflow/pricing-service:dev
+    container_name: pricing-service
+    ports:
+      - "8084:8084"
+    environment:
+      <<: *common-env
+      PORT: "8084"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:8084/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [rideflow]
+
+  # ---------------------------------------------------------------------
+  # Chaos engineering
+  # ---------------------------------------------------------------------
+  chaos-injector:
+    build: ./chaos-injector
+    image: rideflow/chaos-injector:dev
+    container_name: chaos-injector
+    ports:
+      - "9000:9000"
+    environment:
+      <<: *common-env
+      PORT: "9000"
+      PROMETHEUS_URL: http://prometheus:9090
+      GRAFANA_URL: http://grafana:3000
+      GRAFANA_USER: admin
+      GRAFANA_PASSWORD: admin
+      TARGET_NAMESPACE: rideflow
+      CHAOS_ENABLED: "true"
+      MAX_BLAST_RADIUS_PERCENT: "34"
+      EXPERIMENTS_DIR: /app/experiments
+      API_GATEWAY_URL: http://api-gateway:8080
+      USER_SERVICE_URL: http://user-service:8081
+      RIDE_SERVICE_URL: http://ride-service:8082
+      DRIVER_SERVICE_URL: http://driver-service:8083
+      PRICING_SERVICE_URL: http://pricing-service:8084
+    volumes:
+      - ./experiments:/app/experiments:ro
+      - chaos-state:/tmp/chaos-state
+      # gives the LocalBackend real pod-kill-equivalent power (docker restart)
+      # against sibling containers without a Kubernetes control plane
+      - /var/run/docker.sock:/var/run/docker.sock
+    depends_on:
+      prometheus:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9000/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [rideflow]
+
+  security-injector:
+    build: ./security-injector
+    image: rideflow/security-injector:dev
+    container_name: security-injector
+    ports:
+      - "9001:9001"
+    environment:
+      <<: *common-env
+      PORT: "9001"
+      ATTACKS_DIR: /app/attacks
+    volumes:
+      - ./attacks:/app/attacks:ro
+      - security-state:/tmp/security-state
+    depends_on:
+      user-service:
+        condition: service_healthy
+      ride-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request;urllib.request.urlopen('http://localhost:9001/healthz')"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    networks: [rideflow]
+
+  # ---------------------------------------------------------------------
+  # Data / observability
+  # ---------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: redis
+    # no host port published: another project's redis already owns 6379 on
+    # this machine, and driver-service only needs in-network access anyway
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks: [rideflow]
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/recording_rules.yml:/etc/prometheus/recording_rules.yml:ro
+      - ./observability/prometheus/alert_rules.yml:/etc/prometheus/alert_rules.yml:ro
+      - prometheus-data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.enable-lifecycle"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      # cold TSDB start on a fresh volume can take >30s; too short a grace
+      # period here causes a spurious "unhealthy" and blocks every dependent
+      # service from starting even though Prometheus recovers seconds later
+      start_period: 45s
+    networks: [rideflow]
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      # host 3000 is commonly taken by other local projects; Grafana still
+      # listens on 3000 inside the container/network either way
+      - "3001:3000"
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # avoids slow/hanging network calls on every plugin registration in
+      # sandboxed or restricted-egress environments (each check can add
+      # 30-60s per built-in plugin if it retries before timing out)
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_ANALYTICS_CHECK_FOR_PLUGIN_UPDATES: "false"
+    volumes:
+      - ./observability/grafana-provisioning/datasources.yml:/etc/grafana/provisioning/datasources/datasources.yml:ro
+      - ./observability/grafana-provisioning/dashboards.yml:/etc/grafana/provisioning/dashboards/dashboards.yml:ro
+      - ./dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 6
+      start_period: 90s
+    networks: [rideflow]
+
+  # ---------------------------------------------------------------------
+  # Dashboard (frontend static files, built separately)
+  # ---------------------------------------------------------------------
+  dashboard:
+    image: nginx:alpine
+    container_name: dashboard
+    ports:
+      - "5173:80"
+    volumes:
+      # bind mount so this works once the frontend team's build lands here;
+      # frontend/dist is built by `npm run build` in frontend/
+      - ./frontend/dist:/usr/share/nginx/html:ro
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:80/"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 5s
+    networks: [rideflow]

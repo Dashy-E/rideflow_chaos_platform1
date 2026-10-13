@@ -1,0 +1,33 @@
+# E4 — 300ms latency into driver-service (doc §13.2)
+id: network-latency-driver-service
+description: Inject 300ms of added network latency on driver-service to exercise the ride-service circuit breaker
+fault:
+  type: network_latency
+  selector:
+    namespace: rideflow
+    labelSelector: app=driver-service
+  count: 1
+  params:
+    delay_ms: 300
+    mechanism: application_header   # x-chaos-fault header per docs/api/contracts.md; tc netem DaemonSet is the harder alternative
+steady_state:
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.01
+  - metric: histogram_quantile(0.99,
+             sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[1m])) by (le))
+    operator: "<"
+    threshold: 1.5
+blast_radius:
+  max_pods_affected: 1
+  max_percent_of_replicas: 34
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 90s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: Circuit breaker opens; rides created in PENDING_MATCH; no 5xx
+runs_required: 5

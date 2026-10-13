@@ -1,0 +1,65 @@
+# RideFlow alerting rules — the 7 alerts from doc §9.5.
+groups:
+  - name: rideflow-alerts
+    rules:
+      - alert: HighErrorRate
+        expr: rideflow:error_rate > 0.05
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: "RideFlow 5xx error rate above 5%"
+          description: "Gateway error rate is {{ $value | humanizePercentage }}, above the 5% threshold for 2m."
+
+      - alert: HighLatency
+        expr: rideflow:latency_p99 > 2
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "RideFlow p99 latency above 2s"
+          description: "Gateway p99 latency is {{ $value }}s, above the 2s threshold for 5m."
+
+      - alert: PodCrashLooping
+        expr: rate(kube_pod_container_status_restarts_total{namespace="rideflow"}[15m]) > 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Pod {{ $labels.pod }} is crash-looping"
+          description: "Container {{ $labels.container }} in pod {{ $labels.pod }} has restarted repeatedly over the last 15m."
+
+      - alert: ServiceDown
+        expr: up{job=~"api-gateway|user-service|ride-service|driver-service|pricing-service|chaos-injector"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "{{ $labels.job }} is down"
+          description: "Prometheus has failed to scrape {{ $labels.job }} for 1m."
+
+      - alert: HPAMaxedOut
+        expr: kube_horizontalpodautoscaler_status_desired_replicas{namespace="rideflow"} == kube_horizontalpodautoscaler_spec_max_replicas{namespace="rideflow"}
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HPA for {{ $labels.horizontalpodautoscaler }} is maxed out"
+          description: "Desired replicas has equaled max replicas for 10m — the service may be under-provisioned."
+
+      - alert: RegionUnhealthy
+        expr: probe_success{job="route53-health-check"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Route 53 health check failing for region {{ $labels.region }}"
+          description: "The /healthz/region health check has failed for 1m; failover may be imminent or in progress."
+
+      - alert: ChaosExperimentFailed
+        expr: increase(chaos_experiment_runs_total{result="fail"}[5m]) > 0
+        labels:
+          severity: warning
+        annotations:
+          summary: "Chaos experiment {{ $labels.experiment }} failed"
+          description: "The steady-state hypothesis was not restored within the experiment's timeout/abort conditions."

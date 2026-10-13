@@ -1,0 +1,16 @@
+apiVersion: v2
+name: rideflow
+description: >-
+  RideFlow — umbrella chart for the five application microservices
+  (api-gateway, user-service, ride-service, driver-service, pricing-service)
+  plus the chaos-injector and supporting namespaces. See
+  RideFlow-Chaos-Platform-Documentation.md §7, §8.4, §9.2, §11 Phase 3/4.
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - rideflow
+  - microservices
+  - chaos-engineering
+maintainers:
+  - name: RideFlow Team

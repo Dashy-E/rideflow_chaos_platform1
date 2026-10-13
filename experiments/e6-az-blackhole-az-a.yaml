@@ -1,0 +1,31 @@
+# E6 — Drain all nodes in AZ-a (doc §13.2)
+id: az-blackhole-az-a
+description: Cordon and drain all nodes in availability zone az-a, respecting PodDisruptionBudgets
+fault:
+  type: az_blackhole
+  selector:
+    zone: ap-south-1a
+    topologyLabel: topology.kubernetes.io/zone
+  params:
+    method: cordon_and_drain   # alternative: deny-all NetworkPolicy on the AZ's pods
+    respect_pdb: true
+steady_state:
+  - metric: rideflow:availability
+    operator: ">"
+    threshold: 0.99
+  - metric: histogram_quantile(0.99,
+             sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[1m])) by (le))
+    operator: "<"
+    threshold: 1.5
+blast_radius:
+  max_nodes_affected: 1
+  max_percent_of_replicas: 34
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 300s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: PDBs respected; availability > 99%; MTTR < 90s
+runs_required: 3

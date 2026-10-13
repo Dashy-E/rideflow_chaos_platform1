@@ -1,0 +1,6 @@
+id: injection-fuzz-ride-service
+description: Send SQLi/XSS/command-injection-style and oversized payloads into ride creation fields, check for crashes or stack-trace disclosure
+type: injection_fuzz
+target_service: ride-service
+severity_if_vulnerable: high
+params: {}

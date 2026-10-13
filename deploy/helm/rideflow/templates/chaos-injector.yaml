@@ -1,0 +1,180 @@
+{{- if .Values.chaosInjector.enabled }}
+{{- $c := .Values.chaosInjector -}}
+{{- $global := .Values.global -}}
+---
+# Kill switch (doc §8.5): checked before every injection, plus /abort.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: chaos-config
+  namespace: {{ $c.namespace }}
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+data:
+  enabled: {{ $c.chaosEnabled | quote }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: chaos-injector
+  namespace: {{ $c.namespace }}
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+---
+# Namespace-scoped Role — deliberately placed in the TARGET namespace
+# (rideflow), not the injector's own namespace (chaos). This is exactly the
+# RBAC spec in doc §8.4: pods get/list/watch/delete + pods/exec create +
+# deployments get/list/patch/update (+ scale subresource), scoped to
+# `rideflow` only. Explicitly NOT granted: secrets, kube-system, RBAC
+# modification, namespace deletion.
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: chaos-injector
+  namespace: {{ $c.targetNamespace }}
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods"]
+    verbs: ["get", "list", "watch", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["deployments", "deployments/scale"]
+    verbs: ["get", "list", "patch", "update"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: chaos-injector
+  namespace: {{ $c.targetNamespace }}
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: chaos-injector
+subjects:
+  - kind: ServiceAccount
+    name: chaos-injector
+    namespace: {{ $c.namespace }}
+---
+# Cluster-scoped, nodes only — needed to cordon nodes for the F5 AZ-blackhole
+# experiment. Not cluster-admin (doc §8.4 explicitly calls this out as a
+# legitimate viva criticism to avoid).
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: chaos-injector-nodes
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["nodes"]
+    verbs: ["get", "list", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: chaos-injector-nodes
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: chaos-injector-nodes
+subjects:
+  - kind: ServiceAccount
+    name: chaos-injector
+    namespace: {{ $c.namespace }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: chaos-injector
+  namespace: {{ $c.namespace }}
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+    app: chaos-injector
+spec:
+  replicas: {{ $c.replicas }}
+  selector:
+    matchLabels:
+      app: chaos-injector
+  template:
+    metadata:
+      labels:
+        {{- include "rideflow.labels" . | nindent 8 }}
+        app: chaos-injector
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $c.port | quote }}
+    spec:
+      serviceAccountName: chaos-injector
+      containers:
+        - name: injector
+          image: {{ printf "%s/%s:%s" $global.imageRegistry $c.image $c.imageTag }}
+          imagePullPolicy: {{ $global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $c.port }}
+              protocol: TCP
+          env:
+            - name: PROMETHEUS_URL
+              value: {{ $c.prometheusUrl | quote }}
+            - name: GRAFANA_URL
+              value: {{ $c.grafanaUrl | quote }}
+            - name: TARGET_NAMESPACE
+              value: {{ $c.targetNamespace | quote }}
+            - name: CHAOS_ENABLED
+              valueFrom:
+                configMapKeyRef:
+                  name: chaos-config
+                  key: enabled
+            - name: MAX_BLAST_RADIUS_PERCENT
+              value: {{ $c.maxBlastRadiusPercent | quote }}
+            - name: REGION
+              value: {{ $global.region | quote }}
+            - name: LOG_LEVEL
+              value: {{ $global.logLevel | quote }}
+          resources:
+            {{- toYaml $c.resources | nindent 12 }}
+          # Appendix A — exact securityContext from the doc; do not loosen.
+          securityContext:
+            runAsNonRoot: true
+            runAsUser: 10001
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: {{ $c.port }}
+            periodSeconds: 10
+            failureThreshold: 3
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: {{ $c.port }}
+            periodSeconds: 5
+            failureThreshold: 2
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: chaos-injector
+  namespace: {{ $c.namespace }}
+  labels:
+    {{- include "rideflow.labels" . | nindent 4 }}
+    app: chaos-injector
+spec:
+  type: ClusterIP
+  selector:
+    app: chaos-injector
+  ports:
+    - name: http
+      port: {{ $c.port }}
+      targetPort: {{ $c.port }}
+      protocol: TCP
+{{- end }}

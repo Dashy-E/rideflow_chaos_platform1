@@ -1,0 +1,6 @@
+id: idor-probe-ride-service
+description: Check whether one user's ride can be read without authorization, and whether the internal API bypasses the gateway's auth entirely
+type: idor_probe
+target_service: ride-service
+severity_if_vulnerable: high
+params: {}

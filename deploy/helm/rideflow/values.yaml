@@ -1,0 +1,179 @@
+# Default values — PRIMARY region (ap-south-1) defaults.
+# For the secondary (warm-standby) region, layer values-secondary.yaml on
+# top: `helm upgrade --install rideflow deploy/helm/rideflow -f deploy/helm/rideflow/values-secondary.yaml`
+
+global:
+  region: ap-south-1
+  # PLACEHOLDER — replace with your real ECR registry / account ID.
+  imageRegistry: "123456789012.dkr.ecr.ap-south-1.amazonaws.com"
+  imageTag: "latest"
+  imagePullPolicy: IfNotPresent
+  logLevel: info
+  namespace: rideflow
+  redisUrl: "redis://redis.rideflow.svc.cluster.local:6379"
+
+# ---------------------------------------------------------------------------
+# The five application services (doc §6, contracts.md — ports are fixed,
+# do not diverge).
+# ---------------------------------------------------------------------------
+services:
+  api-gateway:
+    image: rideflow/api-gateway
+    port: 8080
+    replicas: 3
+    env: {}
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 60
+    pdb:
+      minAvailable: 2
+
+  user-service:
+    image: rideflow/user-service
+    port: 8081
+    replicas: 3
+    env:
+      DYNAMODB_TABLE_USERS: "rideflow-users"
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 60
+    pdb:
+      minAvailable: 2
+
+  ride-service:
+    image: rideflow/ride-service
+    port: 8082
+    replicas: 3
+    env:
+      DYNAMODB_TABLE_RIDES: "rideflow-rides"
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 60
+    pdb:
+      minAvailable: 2
+
+  driver-service:
+    image: rideflow/driver-service
+    port: 8083
+    replicas: 3
+    env: {}
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 60
+    pdb:
+      minAvailable: 2
+
+  pricing-service:
+    image: rideflow/pricing-service
+    port: 8084
+    replicas: 3
+    env: {}
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 60
+    pdb:
+      minAvailable: 2
+
+# ---------------------------------------------------------------------------
+# Shared pod-level configuration (doc §9.2, §11 Phase 3)
+# ---------------------------------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 128Mi
+  limits:
+    cpu: 500m
+    memory: 256Mi
+
+probes:
+  liveness:
+    path: /healthz
+    initialDelaySeconds: 10
+    periodSeconds: 10
+    timeoutSeconds: 2
+    failureThreshold: 3
+  readiness:
+    path: /readyz
+    initialDelaySeconds: 3
+    periodSeconds: 5
+    timeoutSeconds: 2
+    failureThreshold: 2
+    successThreshold: 1
+  startup:
+    path: /healthz
+    periodSeconds: 5
+    failureThreshold: 12
+
+terminationGracePeriodSeconds: 30
+preStopSleepSeconds: 5
+
+topologySpread:
+  enabled: true
+  maxSkew: 1
+  topologyKey: topology.kubernetes.io/zone
+  whenUnsatisfiable: ScheduleAnyway
+
+rollingUpdate:
+  maxSurge: 1
+  maxUnavailable: 0
+
+metrics:
+  scrapeEnabled: true
+
+# ---------------------------------------------------------------------------
+# Ingress (ALB) — doc §7.3 / §11 Phase 3
+# ---------------------------------------------------------------------------
+ingress:
+  enabled: true
+  className: alb
+  host: "api.rideflow.example"   # PLACEHOLDER — must match the DNS record in infra/modules/dns
+  scheme: internet-facing
+  healthcheckPath: /healthz
+  healthcheckIntervalSeconds: 10
+  healthyThresholdCount: 2
+  unhealthyThresholdCount: 2
+
+# ---------------------------------------------------------------------------
+# Chaos injector — doc §8.3/§8.4/§8.5, Appendix A
+# ---------------------------------------------------------------------------
+chaosInjector:
+  enabled: true
+  namespace: chaos
+  targetNamespace: rideflow
+  image: rideflow/chaos-injector
+  imageTag: "latest"
+  replicas: 1
+  port: 9000
+  maxBlastRadiusPercent: 34
+  chaosEnabled: "false"   # kill switch — ConfigMap chaos-config.enabled, doc §8.5
+  prometheusUrl: "http://kps-prometheus.observability.svc:9090"
+  grafanaUrl: "http://kps-grafana.observability.svc"
+  resources:
+    requests:
+      cpu: 50m
+      memory: 128Mi
+    limits:
+      cpu: 200m
+      memory: 256Mi
+
+namespaces:
+  # NOTE: `platform` is deliberately excluded — it is created by Terraform
+  # (infra/envs/*/main.tf, ahead of the AWS LB Controller / Cluster
+  # Autoscaler helm_release resources) so it exists before those
+  # controllers are needed. Creating it again here would collide with
+  # Terraform's ownership of it.
+  create: true
+  names:
+    - rideflow
+    - observability
+    - chaos

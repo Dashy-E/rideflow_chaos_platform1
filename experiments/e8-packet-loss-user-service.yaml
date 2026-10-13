@@ -1,0 +1,33 @@
+# E8 — 20% packet loss to user-service (doc §13.2)
+id: packet-loss-user-service
+description: Inject 20% packet loss on user-service traffic to verify retry-with-jitter absorbs it
+fault:
+  type: packet_loss
+  selector:
+    namespace: rideflow
+    labelSelector: app=user-service
+  count: 1
+  params:
+    loss_percent: 20
+    mechanism: tc_netem   # falls back to application_header simulation if the privileged DaemonSet is unavailable
+steady_state:
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.02
+  - metric: histogram_quantile(0.99,
+             sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[1m])) by (le))
+    operator: "<"
+    threshold: 1.5
+blast_radius:
+  max_pods_affected: 1
+  max_percent_of_replicas: 34
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 90s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: Retries absorb it; error rate < 2%
+runs_required: 5

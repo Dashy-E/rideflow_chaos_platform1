@@ -1,0 +1,17 @@
+# Copy to terraform.tfvars and adjust as needed. All values below are
+# already sane defaults from variables.tf — override only what you need to
+# change (e.g. node_capacity_type = "SPOT" for cheaper dev iterations, per
+# doc §14.2, but switch back to ON_DEMAND before the final measured chaos
+# runs — doc §15 risk #11).
+
+region             = "ap-south-1"
+cluster_name       = "rideflow-primary"
+vpc_cidr           = "10.0.0.0/16"
+azs                = ["ap-south-1a", "ap-south-1b", "ap-south-1c"]
+
+node_min_size      = 3
+node_desired_size  = 3
+node_max_size      = 8
+node_capacity_type = "ON_DEMAND"   # or "SPOT" during development
+
+dynamodb_replica_regions = ["ap-southeast-1"]

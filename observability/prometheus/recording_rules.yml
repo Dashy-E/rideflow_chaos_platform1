@@ -1,0 +1,18 @@
+# RideFlow recording rules — verbatim from doc Appendix C.
+groups:
+  - name: rideflow-sli
+    interval: 5s
+    rules:
+      - record: rideflow:error_rate
+        expr: |
+          sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[30s]))
+          / sum(rate(http_requests_total{job="api-gateway"}[30s]))
+      - record: rideflow:latency_p99
+        expr: |
+          histogram_quantile(0.99,
+            sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[30s])) by (le))
+      - record: rideflow:healthy_replicas
+        expr: |
+          sum by (app) (kube_pod_status_ready{namespace="rideflow",condition="true"})
+      - record: rideflow:availability
+        expr: 1 - rideflow:error_rate

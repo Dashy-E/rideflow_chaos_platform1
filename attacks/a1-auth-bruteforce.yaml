@@ -1,0 +1,7 @@
+id: auth-bruteforce-user-service
+description: Attempt repeated wrong-password logins against a single account to test for account lockout / auth-specific rate limiting
+type: auth_bruteforce
+target_service: user-service
+severity_if_vulnerable: high
+params:
+  attempts: 25

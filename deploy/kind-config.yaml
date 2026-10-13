@@ -1,0 +1,35 @@
+# 3-node kind cluster for local RideFlow development.
+# Usage: kind create cluster --name rideflow --config deploy/kind-config.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: rideflow
+nodes:
+  - role: control-plane
+    kubeadmConfigPatches:
+      - |
+        kind: InitConfiguration
+        nodeRegistration:
+          kubeletExtraArgs:
+            node-labels: "ingress-ready=true"
+    extraPortMappings:
+      # ALB-equivalent ingress on kind: map host 80/443 -> ingress controller
+      - containerPort: 80
+        hostPort: 8000
+        protocol: TCP
+      - containerPort: 443
+        hostPort: 8443
+        protocol: TCP
+      # api-gateway direct access for local debugging without ingress
+      - containerPort: 30080
+        hostPort: 8080
+        protocol: TCP
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: az-a
+  - role: worker
+    labels:
+      topology.kubernetes.io/zone: az-b
+networking:
+  apiServerPort: 6443
+  podSubnet: "10.244.0.0/16"
+  serviceSubnet: "10.96.0.0/12"

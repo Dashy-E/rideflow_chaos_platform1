@@ -1,0 +1,148 @@
+{
+  "id": null,
+  "uid": "rideflow-chaos-timeline",
+  "title": "RideFlow / Chaos Timeline",
+  "description": "Experiment annotations overlaid on error rate + latency; MTTD/MTTR gauges; active fault list; run history table.",
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "timezone": "browser",
+  "time": { "from": "now-1h", "to": "now" },
+  "refresh": "5s",
+  "tags": ["rideflow", "chaos"],
+  "templating": {
+    "list": [
+      {
+        "name": "datasource",
+        "type": "datasource",
+        "query": "prometheus",
+        "current": { "text": "Prometheus", "value": "Prometheus" },
+        "hide": 0,
+        "refresh": 1
+      },
+      {
+        "name": "experiment",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "$datasource" },
+        "query": { "query": "label_values(chaos_experiment_runs_total, experiment)", "refId": "experimentVar" },
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Chaos experiments (t0 / t_recover)",
+        "datasource": { "type": "prometheus", "uid": "$datasource" },
+        "enable": true,
+        "iconColor": "orange",
+        "tags": ["chaos"],
+        "type": "tags"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "id": 1,
+      "title": "Error Rate (with fault windows)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 0 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "percentunit" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rideflow:error_rate", "legendFormat": "error rate" }
+      ]
+    },
+    {
+      "id": 2,
+      "title": "p99 Latency (with fault windows)",
+      "type": "timeseries",
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "rideflow:latency_p99", "legendFormat": "p99" }
+      ]
+    },
+    {
+      "id": 3,
+      "title": "MTTD (last run)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 0, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "chaos_mttd_seconds{experiment=~\"$experiment\"}" }
+      ]
+    },
+    {
+      "id": 4,
+      "title": "MTTR (last run)",
+      "type": "stat",
+      "gridPos": { "h": 6, "w": 6, "x": 6, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "s" }, "overrides": [] },
+      "targets": [
+        { "refId": "A", "expr": "chaos_mttr_seconds{experiment=~\"$experiment\"}" }
+      ]
+    },
+    {
+      "id": 5,
+      "title": "Active Faults",
+      "type": "table",
+      "gridPos": { "h": 6, "w": 12, "x": 12, "y": 16 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "targets": [
+        { "refId": "A", "expr": "chaos_active_faults", "format": "table", "instant": true }
+      ]
+    },
+    {
+      "id": 6,
+      "title": "Experiment Runs (result totals)",
+      "type": "barchart",
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (experiment, result) (chaos_experiment_runs_total{experiment=~\"$experiment\"})",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "title": "Run History",
+      "type": "table",
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 22 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "chaos_experiment_duration_seconds{experiment=~\"$experiment\"}",
+          "format": "table",
+          "instant": true
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "title": "Steady-State Violations",
+      "type": "timeseries",
+      "gridPos": { "h": 6, "w": 24, "x": 0, "y": 30 },
+      "datasource": { "type": "prometheus", "uid": "$datasource" },
+      "fieldConfig": { "defaults": { "unit": "short" }, "overrides": [] },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "increase(chaos_steady_state_violations_total{experiment=~\"$experiment\"}[1m])",
+          "legendFormat": "{{experiment}} / {{condition}}"
+        }
+      ]
+    }
+  ]
+}

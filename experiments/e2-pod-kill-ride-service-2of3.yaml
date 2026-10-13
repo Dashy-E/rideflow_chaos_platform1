@@ -1,0 +1,30 @@
+# E2 — Kill 2 of 3 ride-service pods (doc §13.2)
+id: pod-kill-ride-service-2of3
+description: Terminate two of three ride-service pods simultaneously during steady load
+fault:
+  type: pod_kill
+  selector:
+    namespace: rideflow
+    labelSelector: app=ride-service
+  count: 2
+steady_state:
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.01
+  - metric: histogram_quantile(0.99,
+             sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[1m])) by (le))
+    operator: "<"
+    threshold: 1.5
+blast_radius:
+  max_pods_affected: 2
+  max_percent_of_replicas: 67
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 120s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: Error rate < 5%, recovers < 45s
+runs_required: 5

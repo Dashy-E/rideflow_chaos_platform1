@@ -1,0 +1,30 @@
+# E1 — Kill 1 of 3 ride-service pods (doc §13.2)
+id: pod-kill-ride-service
+description: Terminate one ride-service pod during steady load
+fault:
+  type: pod_kill
+  selector:
+    namespace: rideflow
+    labelSelector: app=ride-service
+  count: 1
+steady_state:
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.01
+  - metric: histogram_quantile(0.99,
+             sum(rate(http_request_duration_seconds_bucket{job="api-gateway"}[1m])) by (le))
+    operator: "<"
+    threshold: 1.5
+blast_radius:
+  max_pods_affected: 1
+  max_percent_of_replicas: 34
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 120s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: No measurable error-rate increase; MTTR < 20s
+runs_required: 5

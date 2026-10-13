@@ -1,0 +1,21 @@
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl
+
+# Generated SSH keys (free-tier-ec2 deploy key)
+*.pem
+
+# Node / Python / Go build artifacts
+node_modules/
+__pycache__/
+*.pyc
+dist/
+!frontend/dist/
+
+# Editor / OS
+.DS_Store
+*.log

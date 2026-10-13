@@ -1,0 +1,103 @@
+{{- $global := .Values.global -}}
+{{- $root := . -}}
+{{- range $name, $svc := .Values.services }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ $name }}
+  namespace: {{ $global.namespace }}
+  labels:
+    {{- include "rideflow.labels" $root | nindent 4 }}
+    {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 4 }}
+spec:
+  replicas: {{ $svc.replicas }}
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: {{ $root.Values.rollingUpdate.maxSurge }}
+      maxUnavailable: {{ $root.Values.rollingUpdate.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "rideflow.labels" $root | nindent 8 }}
+        {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 8 }}
+      annotations:
+        {{- if $root.Values.metrics.scrapeEnabled }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $svc.port | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
+    spec:
+      serviceAccountName: {{ $name }}
+      terminationGracePeriodSeconds: {{ $root.Values.terminationGracePeriodSeconds }}
+      {{- if $root.Values.topologySpread.enabled }}
+      topologySpreadConstraints:
+        - maxSkew: {{ $root.Values.topologySpread.maxSkew }}
+          topologyKey: {{ $root.Values.topologySpread.topologyKey }}
+          whenUnsatisfiable: {{ $root.Values.topologySpread.whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "rideflow.selectorLabels" (dict "serviceName" $name "releaseName" $root.Release.Name) | nindent 14 }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "rideflow.image" (dict "global" $global "svc" $svc) }}
+          imagePullPolicy: {{ $global.imagePullPolicy }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ $svc.port | quote }}
+            - name: LOG_LEVEL
+              value: {{ $global.logLevel | quote }}
+            - name: REGION
+              value: {{ $global.region | quote }}
+            {{- if eq $name "driver-service" }}
+            - name: REDIS_URL
+              value: {{ $global.redisUrl | quote }}
+            {{- end }}
+            - name: CHAOS_FAULT_HEADER
+              value: "x-chaos-fault"
+            {{- range $key, $value := $svc.env }}
+            - name: {{ $key }}
+              value: {{ $value | quote }}
+            {{- end }}
+          resources:
+            {{- toYaml $root.Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: {{ $root.Values.probes.liveness.path }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: {{ $root.Values.probes.liveness.initialDelaySeconds }}
+            periodSeconds: {{ $root.Values.probes.liveness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.liveness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.liveness.failureThreshold }}
+          readinessProbe:
+            httpGet:
+              path: {{ $root.Values.probes.readiness.path }}
+              port: {{ $svc.port }}
+            initialDelaySeconds: {{ $root.Values.probes.readiness.initialDelaySeconds }}
+            periodSeconds: {{ $root.Values.probes.readiness.periodSeconds }}
+            timeoutSeconds: {{ $root.Values.probes.readiness.timeoutSeconds }}
+            failureThreshold: {{ $root.Values.probes.readiness.failureThreshold }}
+            successThreshold: {{ $root.Values.probes.readiness.successThreshold }}
+          startupProbe:
+            httpGet:
+              path: {{ $root.Values.probes.startup.path }}
+              port: {{ $svc.port }}
+            periodSeconds: {{ $root.Values.probes.startup.periodSeconds }}
+            failureThreshold: {{ $root.Values.probes.startup.failureThreshold }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sh", "-c", "sleep {{ $root.Values.preStopSleepSeconds }}"]
+      # NOTE: a dedicated ServiceAccount per service (referenced above) is
+      # created in serviceaccounts.yaml — kept separate so IRSA annotations
+      # can be added per-service later without touching this template.
+{{- end }}

@@ -1,0 +1,63 @@
+# Secondary (warm-standby) region overrides — ap-southeast-1.
+# Doc §5.4: "Replicas per service: 1 (scales on failover)"; chaos injector
+# deployed but disabled by default.
+#
+# Usage:
+#   helm upgrade --install rideflow deploy/helm/rideflow \
+#     -n rideflow -f deploy/helm/rideflow/values-secondary.yaml \
+#     --set global.imageTag=<sha>
+
+global:
+  region: ap-southeast-1
+  # PLACEHOLDER — secondary region's own ECR registry (images replicated
+  # there via infra/global's aws_ecr_replication_configuration).
+  imageRegistry: "123456789012.dkr.ecr.ap-southeast-1.amazonaws.com"
+  redisUrl: "redis://redis.rideflow.svc.cluster.local:6379"   # secondary region's own ElastiCache endpoint
+
+services:
+  api-gateway:
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 12
+    pdb:
+      minAvailable: 0   # single replica — a PDB requiring 1 would block all voluntary disruption
+
+  user-service:
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 12
+    pdb:
+      minAvailable: 0
+
+  ride-service:
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 12
+    pdb:
+      minAvailable: 0
+
+  driver-service:
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 12
+    pdb:
+      minAvailable: 0
+
+  pricing-service:
+    replicas: 1
+    hpa:
+      minReplicas: 1
+      maxReplicas: 12
+    pdb:
+      minAvailable: 0
+
+ingress:
+  host: "api-secondary.rideflow.example"   # PLACEHOLDER — only fronted directly for synthetic canaries (doc §15 risk #3); production traffic arrives via Route 53 failover to the same logical hostname
+
+chaosInjector:
+  enabled: true
+  chaosEnabled: "false"   # disabled by default in secondary — doc §5.4

@@ -1,0 +1,12 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "outputDirectory": "frontend/dist",
+  "functions": {
+    "api/proxy.js": { "maxDuration": 30 }
+  },
+  "rewrites": [
+    { "source": "/api/config", "destination": "/api/proxy?target=config" },
+    { "source": "/api/:target(chaos|security)/:path*", "destination": "/api/proxy?target=:target&path=:path*" }
+  ]
+}

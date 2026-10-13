@@ -1,0 +1,31 @@
+# E5 — Scale pricing-service to 0 (doc §13.2)
+id: dependency-failure-pricing-service
+description: Scale the pricing-service Deployment to 0 replicas to exercise ride-service's cached-fare fallback
+fault:
+  type: dependency_failure
+  selector:
+    namespace: rideflow
+    labelSelector: app=pricing-service
+  params:
+    target_replicas: 0
+    restore_replicas: 3
+steady_state:
+  - metric: sum(rate(http_requests_total{job="api-gateway",code=~"5.."}[1m]))
+           / sum(rate(http_requests_total{job="api-gateway"}[1m]))
+    operator: "<"
+    threshold: 0.01
+  - metric: sum(rate(rides_created_total[1m])) * 60
+    operator: ">"
+    threshold: 45
+blast_radius:
+  max_pods_affected: 3
+  max_percent_of_replicas: 100
+  forbidden_namespaces: [kube-system, observability, chaos]
+duration: 120s
+abort_conditions:
+  - metric: error_rate
+    operator: ">"
+    threshold: 0.25
+    sustained_for: 15s
+hypothesis: Ride creation continues with estimated fare; 0% error
+runs_required: 5
